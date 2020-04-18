@@ -321,7 +321,7 @@ func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscript
 func (es *EventSystem) SubscribePendingFullTxs(txs chan []*types.Transaction) *Subscription {
 	sub := &subscription{
 		id:        rpc.NewID(),
-		typ:       PendingTransactionsSubscription,
+		typ:       FullPendingTransactionsSubscription,
 		created:   time.Now(),
 		logs:      make(chan []*types.Log),
 		hashes:    make(chan []common.Hash),

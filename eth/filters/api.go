@@ -102,6 +102,37 @@ func (api *PublicFilterAPI) timeoutLoop() {
 // `eth_getFilterChanges` polling method that is also used for log filters.
 //
 // https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newpendingtransactionfilter
+func (api *PublicFilterAPI) NewPendingFullTransactionFilter() rpc.ID {
+	var (
+		pendingTxs   = make(chan []*types.Transaction)
+		pendingTxSub = api.events.SubscribePendingFullTxs(pendingTxs)
+	)
+
+	api.filtersMu.Lock()
+	api.filters[pendingTxSub.ID] = &filter{typ: FullPendingTransactionsSubscription, deadline: time.NewTimer(deadline), txs: make([]*types.Transaction, 0), s: pendingTxSub}
+	api.filtersMu.Unlock()
+
+	go func() {
+		for {
+			select {
+			case ph := <-pendingTxs:
+				api.filtersMu.Lock()
+				if f, found := api.filters[pendingTxSub.ID]; found {
+					f.txs = append(f.txs, ph...)
+				}
+				api.filtersMu.Unlock()
+			case <-pendingTxSub.Err():
+				api.filtersMu.Lock()
+				delete(api.filters, pendingTxSub.ID)
+				api.filtersMu.Unlock()
+				return
+			}
+		}
+	}()
+
+	return pendingTxSub.ID
+}
+
 func (api *PublicFilterAPI) NewPendingTransactionFilter() rpc.ID {
 	var (
 		pendingTxs   = make(chan []common.Hash)
@@ -181,14 +212,14 @@ func (api *PublicFilterAPI) NewPendingFullTransactions(ctx context.Context) (*rp
 	go func() {
 		txs := make(chan []*types.Transaction)
 		pendingFullTxSub := api.events.SubscribePendingFullTxs(txs)
-
+		
 		for {
 			select {
 			case trans := <-txs:
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				for _, tx := range trans {
-					notifier.Notify(rpcSub.ID, tx)
+					notifier.Notify(rpcSub.ID, tx.asMessage(types.NewEIP155Signer(tx.ChainId())))
 				}
 			case <-rpcSub.Err():
 				pendingFullTxSub.Unsubscribe()
