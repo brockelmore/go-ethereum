@@ -44,6 +44,7 @@ type filter struct {
 	typ      Type
 	deadline *time.Timer // filter is inactiv when deadline triggers
 	hashes   []common.Hash
+	txs      []*types.Transaction
 	crit     FilterCriteria
 	logs     []*types.Log
 	s        *Subscription // associated subscription in event system
@@ -212,14 +213,14 @@ func (api *PublicFilterAPI) NewPendingFullTransactions(ctx context.Context) (*rp
 	go func() {
 		txs := make(chan []*types.Transaction)
 		pendingFullTxSub := api.events.SubscribePendingFullTxs(txs)
-		
+
 		for {
 			select {
 			case trans := <-txs:
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				for _, tx := range trans {
-					notifier.Notify(rpcSub.ID, tx.asMessage(types.NewEIP155Signer(tx.ChainId())))
+					notifier.Notify(rpcSub.ID, tx.AsMessage(types.NewEIP155Signer(tx.ChainId())))
 				}
 			case <-rpcSub.Err():
 				pendingFullTxSub.Unsubscribe()
