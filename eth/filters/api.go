@@ -39,22 +39,55 @@ var (
 )
 
 
-type rpcTransaction struct {
-	tx *types.Transaction
-	txExtraInfo
+type RPCTransaction struct {
+	BlockHash        *common.Hash    `json:"blockHash"`
+	BlockNumber      *hexutil.Big    `json:"blockNumber"`
+	From             common.Address  `json:"from"`
+	Gas              hexutil.Uint64  `json:"gas"`
+	GasPrice         *hexutil.Big    `json:"gasPrice"`
+	Hash             common.Hash     `json:"hash"`
+	Input            hexutil.Bytes   `json:"input"`
+	Nonce            hexutil.Uint64  `json:"nonce"`
+	To               *common.Address `json:"to"`
+	TransactionIndex *hexutil.Uint64 `json:"transactionIndex"`
+	Value            *hexutil.Big    `json:"value"`
+	V                *hexutil.Big    `json:"v"`
+	R                *hexutil.Big    `json:"r"`
+	S                *hexutil.Big    `json:"s"`
 }
-
-type txExtraInfo struct {
-	BlockNumber *string         `json:"blockNumber,omitempty"`
-	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
-	From        common.Address `json:"from,omitempty"`
+// newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
+func newRPCPendingTransaction(tx *types.Transaction) *RPCTransaction {
+	return newRPCTransaction(tx, common.Hash{}, 0, 0)
 }
-
-func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
-	if err := json.Unmarshal(msg, &tx.tx); err != nil {
-		return err
+// newRPCTransaction returns a transaction that will serialize to the RPC
+// representation, with the given location metadata set (if available).
+func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64) *RPCTransaction {
+	var signer types.Signer = types.FrontierSigner{}
+	if tx.Protected() {
+		signer = types.NewEIP155Signer(tx.ChainId())
 	}
-	return json.Unmarshal(msg, &tx.txExtraInfo)
+	from, _ := types.Sender(signer, tx)
+	v, r, s := tx.RawSignatureValues()
+
+	result := &RPCTransaction{
+		From:     from,
+		Gas:      hexutil.Uint64(tx.Gas()),
+		GasPrice: (*hexutil.Big)(tx.GasPrice()),
+		Hash:     tx.Hash(),
+		Input:    hexutil.Bytes(tx.Data()),
+		Nonce:    hexutil.Uint64(tx.Nonce()),
+		To:       tx.To(),
+		Value:    (*hexutil.Big)(tx.Value()),
+		V:        (*hexutil.Big)(v),
+		R:        (*hexutil.Big)(r),
+		S:        (*hexutil.Big)(s),
+	}
+	if blockHash != (common.Hash{}) {
+		result.BlockHash = &blockHash
+		result.BlockNumber = (*hexutil.Big)(new(big.Int).SetUint64(blockNumber))
+		result.TransactionIndex = (*hexutil.Uint64)(&index)
+	}
+	return result
 }
 
 
@@ -240,12 +273,8 @@ func (api *PublicFilterAPI) NewPendingFullTransactions(ctx context.Context) (*rp
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				for _, tx := range trans {
-					var json rpcTransaction
-					msg, err := tx.AsMessage(types.NewEIP155Signer(tx.ChainId()))
 					if err == nil {
-						json.tx = tx
-						json.txExtraInfo.From = msg.From()
-						notifier.Notify(rpcSub.ID, json)
+						notifier.Notify(rpcSub.ID, newRPCPendingTransaction(tx))
 					}
 				}
 			case <-rpcSub.Err():
