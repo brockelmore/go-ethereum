@@ -38,6 +38,26 @@ var (
 	deadline = 5 * time.Minute // consider a filter inactive if it has not been polled for within deadline
 )
 
+
+type rpcTransaction struct {
+	tx *types.Transaction
+	txExtraInfo
+}
+
+type txExtraInfo struct {
+	BlockNumber *string         `json:"blockNumber,omitempty"`
+	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
+	From        *common.Address `json:"from,omitempty"`
+}
+
+func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
+	if err := json.Unmarshal(msg, &tx.tx); err != nil {
+		return err
+	}
+	return json.Unmarshal(msg, &tx.txExtraInfo)
+}
+
+
 // filter is a helper struct that holds meta information over the filter type
 // and associated subscription in the event system.
 type filter struct {
@@ -220,10 +240,12 @@ func (api *PublicFilterAPI) NewPendingFullTransactions(ctx context.Context) (*rp
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				for _, tx := range trans {
+					var json *rpcTransaction
 					msg, err := tx.AsMessage(types.NewEIP155Signer(tx.ChainId()))
-					tx.from = msg.From();
+					json.tx = tx
+					json.txExtraInfo.From = msg.From()
 					if err == nil {
-						notifier.Notify(rpcSub.ID, tx)
+						notifier.Notify(rpcSub.ID, json)
 					}
 				}
 			case <-rpcSub.Err():
