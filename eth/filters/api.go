@@ -220,7 +220,10 @@ func (api *PublicFilterAPI) NewPendingFullTransactions(ctx context.Context) (*rp
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				for _, tx := range trans {
-					notifier.Notify(rpcSub.ID, tx.AsMessage(types.NewEIP155Signer(tx.ChainId())))
+					msg, err := tx.AsMessage(types.NewEIP155Signer(tx.ChainId()))
+					if err == nil {
+						notifier.Notify(rpcSub.ID, msg)
+					}
 				}
 			case <-rpcSub.Err():
 				pendingFullTxSub.Unsubscribe()
