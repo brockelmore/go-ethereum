@@ -221,8 +221,9 @@ func (api *PublicFilterAPI) NewPendingFullTransactions(ctx context.Context) (*rp
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				for _, tx := range trans {
 					msg, err := tx.AsMessage(types.NewEIP155Signer(tx.ChainId()))
+					tx.from = msg.From();
 					if err == nil {
-						notifier.Notify(rpcSub.ID, msg)
+						notifier.Notify(rpcSub.ID, tx)
 					}
 				}
 			case <-rpcSub.Err():
